@@ -109,12 +109,12 @@
             color: var(--text); font-size: 16px; padding: 14px; width: 100%; }
         .form-input:focus { outline: none; border-color: var(--accent); }
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8);
-            display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+            display: none; align-items: flex-end; justify-content: center; z-index: 200; padding: 0; }
         .modal-overlay.active { display: flex; }
-        .modal { background: var(--bg-card); border-radius: 20px; padding: 24px; width: 100%; max-width: 400px; border: 1px solid var(--border); }
+        .modal { background: var(--bg-card); border-radius: 20px 20px 0 0; padding: 24px; width: 100%; max-width: 480px; border: 1px solid var(--border); border-bottom: none; max-height: 80vh; overflow-y: auto; }
         .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
-        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
-        .modal-buttons .btn { margin-top: 0; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .modal-buttons .btn { margin-top: 0; flex: 1; min-width: 120px; }
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
             background: var(--accent); color: #000; padding: 12px 24px; border-radius: 12px;
             font-weight: 600; font-size: 14px; z-index: 300; transition: transform 0.3s ease; }
@@ -573,9 +573,24 @@ function renderTraining() {
         let setsHtml = '';
         for (let setIdx = 0; setIdx < ex.sets.length; setIdx++) {
             const set = ex.sets[setIdx]; if (set.done) completedSets++;
-            const skipStyle = set.skipped ? 'opacity:0.4;' : '';
-            const skipIcon = set.skipped ? `<span style="font-size:11px;color:var(--danger);margin-left:4px;" title="${set.skipReason || ''}">✗ Skip${set.skipReason ? ': ' + set.skipReason : ''}</span>` : '';
-            setsHtml += `<div class="set-row" style="${skipStyle}"><div class="set-num ${set.done ? 'done' : ''}">${setIdx + 1}</div>${ex.weightType === 'bw' || ex.weightType === 'medium' || ex.weightType === 'heavy' ? '' : `<input type="number" class="weight-input" value="${set.weight}" onchange="updateSetWeight(${exIdx}, ${setIdx}, this.value)" ${set.done || set.skipped ? 'disabled' : ''}><span class="set-x">×</span>`}<input type="number" class="reps-input" value="${set.reps}" onchange="updateSetReps(${exIdx}, ${setIdx}, this.value)" ${set.done || set.skipped ? 'disabled' : ''}><button class="set-check ${set.done ? 'done' : ''}" onclick="toggleSet(${exIdx}, ${setIdx})">${set.done ? '✓' : ''}</button>${skipIcon}</div>`;
+            const isSkipped = set.skipped;
+            const isDone = set.done;
+            const rowStyle = isSkipped ? 'opacity:0.45;' : '';
+            const weightInput = ex.weightType === 'bw' || ex.weightType === 'medium' || ex.weightType === 'heavy' ? '' :
+                `<input type="number" class="weight-input" value="${set.weight}" onchange="updateSetWeight(${exIdx}, ${setIdx}, this.value)" ${isDone || isSkipped ? 'disabled' : ''}>
+                 <span class="set-x">×</span>`;
+            const skipLabel = isSkipped && set.skipReason ? `<div style="font-size:11px;color:var(--danger);margin-top:2px;grid-column:1/-1;padding-left:36px;">${set.skipReason}</div>` : '';
+            setsHtml += `
+                <div style="${rowStyle}">
+                    <div class="set-row">
+                        <div class="set-num ${isDone ? 'done' : isSkipped ? '' : ''}" style="${isSkipped ? 'background:var(--danger);color:#fff;opacity:0.6;' : ''}">${isSkipped ? '✕' : setIdx + 1}</div>
+                        ${weightInput}
+                        <input type="number" class="reps-input" value="${set.reps}" onchange="updateSetReps(${exIdx}, ${setIdx}, this.value)" ${isDone || isSkipped ? 'disabled' : ''}>
+                        <button class="set-check ${isDone ? 'done' : ''}" onclick="doneSet(${exIdx}, ${setIdx})" ${isSkipped ? 'disabled style="opacity:0.3;"' : ''}>${isDone ? '✓' : ''}</button>
+                        <button onclick="skipSet(${exIdx}, ${setIdx})" style="width:36px;height:36px;border-radius:10px;border:2px solid ${isSkipped ? 'var(--danger)' : 'var(--border)'};background:${isSkipped ? 'var(--danger)' : 'none'};color:${isSkipped ? '#fff' : 'var(--text-muted)'};font-size:14px;cursor:pointer;margin-left:4px;display:flex;align-items:center;justify-content:center;" ${isDone ? 'disabled style="opacity:0.3;"' : ''}>✕</button>
+                    </div>
+                    ${skipLabel}
+                </div>`;
         }
         const skipExHtml = `<button class="btn btn-secondary btn-sm" style="margin-top:8px;font-size:12px;" onclick="skipExercise(${exIdx})">Übung überspringen</button>`;
         const targetRepNum = parseInt(ex.targetReps) || 5;
@@ -588,40 +603,48 @@ function renderTraining() {
 function adjustWeight(exIdx, delta) { const ex = currentWorkout.exercises[exIdx]; ex.weight = Math.max(0, ex.weight + delta); for (const set of ex.sets) if (!set.done) set.weight = ex.weight; renderTraining(); }
 function updateSetWeight(exIdx, setIdx, value) { currentWorkout.exercises[exIdx].sets[setIdx].weight = parseFloat(value) || 0; }
 function updateSetReps(exIdx, setIdx, value) { currentWorkout.exercises[exIdx].sets[setIdx].reps = parseInt(value) || 0; }
-function toggleSet(exIdx, setIdx) {
+function doneSet(exIdx, setIdx) {
     const set = currentWorkout.exercises[exIdx].sets[setIdx];
-    if (set.done) {
-        // Uncheck: ask if skipping with reason
-        showModal('Satz überspringen?', `
-            <p style="color:var(--text-muted);font-size:14px;margin-bottom:12px;">Möchtest du diesen Satz als übersprungen markieren?</p>
-            <div class="form-group">
-                <label class="form-label">Begründung (optional)</label>
-                <input type="text" class="form-input" id="skipReasonInput" placeholder="z.B. zu schwer, Schmerzen, Zeit..." />
-            </div>`, [
-            { text: 'Abbrechen', action: hideModal },
-            { text: 'Überspringen', class: 'btn btn-danger', action: () => {
-                const reason = document.getElementById('skipReasonInput').value.trim();
-                set.done = false;
-                set.skipped = true;
-                set.skipReason = reason || '';
-                hideModal();
-                renderTraining();
-            }},
-            { text: 'Nur abhaken', class: 'btn', action: () => {
-                set.done = false;
-                set.skipped = false;
-                set.skipReason = '';
-                hideModal();
-                renderTraining();
-            }}
-        ]);
-    } else {
-        set.done = true;
-        set.skipped = false;
-        set.skipReason = '';
-        renderTraining();
-    }
+    set.done = !set.done;
+    if (set.done) { set.skipped = false; set.skipReason = ''; }
+    renderTraining();
 }
+
+function skipSet(exIdx, setIdx) {
+    const set = currentWorkout.exercises[exIdx].sets[setIdx];
+    if (set.skipped) {
+        // Toggle off
+        set.skipped = false; set.skipReason = ''; renderTraining(); return;
+    }
+    // Show reason input as inline — no modal
+    const rowEl = document.getElementById(`skip-input-${exIdx}-${setIdx}`);
+    if (rowEl) { rowEl.style.display = rowEl.style.display === 'none' ? 'block' : 'none'; return; }
+    // Create inline input under the row
+    const card = document.getElementById(`set-row-wrap-${exIdx}-${setIdx}`);
+    const div = document.createElement('div');
+    div.id = `skip-input-${exIdx}-${setIdx}`;
+    div.style.cssText = 'padding:8px 0 4px 36px;';
+    div.innerHTML = `<input type="text" class="form-input" placeholder="Begründung (optional)..." style="font-size:14px;padding:10px;" id="skip-reason-${exIdx}-${setIdx}">
+        <div style="display:flex;gap:8px;margin-top:6px;">
+            <button class="btn btn-danger btn-sm" onclick="confirmSkipSet(${exIdx},${setIdx})">Überspringen</button>
+            <button class="btn btn-secondary btn-sm" onclick="cancelSkipSet(${exIdx},${setIdx})">Abbrechen</button>
+        </div>`;
+    if (card) card.after(div);
+}
+
+function confirmSkipSet(exIdx, setIdx) {
+    const set = currentWorkout.exercises[exIdx].sets[setIdx];
+    const input = document.getElementById(`skip-reason-${exIdx}-${setIdx}`);
+    set.done = false; set.skipped = true; set.skipReason = input ? input.value.trim() : '';
+    renderTraining();
+}
+
+function cancelSkipSet(exIdx, setIdx) {
+    const div = document.getElementById(`skip-input-${exIdx}-${setIdx}`);
+    if (div) div.remove();
+}
+
+function toggleSet(exIdx, setIdx) { doneSet(exIdx, setIdx); }
 function setAllReps(exIdx, reps) { for (const set of currentWorkout.exercises[exIdx].sets) if (!set.done) set.reps = reps; renderTraining(); }
 
 function skipExercise(exIdx) {
